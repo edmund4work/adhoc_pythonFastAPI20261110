@@ -1,7 +1,8 @@
 # FastAPI Starter
 
-A minimal Python API project built with FastAPI. It exposes one endpoint,
-`GET /health`, which can be used to confirm that the service is running.
+A minimal Python API project built with FastAPI. It exposes a health-check
+endpoint and a POST endpoint that accepts an integer and a string, then returns
+the submitted values.
 
 ## Requirements
 
@@ -49,15 +50,38 @@ python -m uvicorn main:app --reload
 The API is available at <http://127.0.0.1:8000>.
 Press `Ctrl+C` in the terminal to stop the server.
 
-## Endpoint
+## Endpoints
 
-### `GET /health`
+### `GET /health1get`
 
 Returns the service health status:
 
 ```json
 {"status": "ok"}
 ```
+
+### `POST /health2post`
+
+Send a JSON request body with an integer `number` and a string `text`:
+
+```json
+{
+  "number": 123,
+  "text": "hello"
+}
+```
+
+The response echoes the submitted values:
+
+```json
+{
+  "user entered number": 123,
+  "and text": "hello"
+}
+```
+
+To try this endpoint in the browser, open `/docs`, choose `POST /health2post`,
+select **Try it out**, enter the JSON, and select **Execute**.
 
 Interactive API documentation is available at <http://127.0.0.1:8000/docs>
 when the server is running.
