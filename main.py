@@ -4,7 +4,8 @@ import os
 # Load project-level settings from .env when present.
 from dotenv import load_dotenv
 
-# Type hint for the JSON response returned by the employee endpoint.
+# Decimal salary values and JSON response type hints.
+from decimal import Decimal
 from typing import Any
 
 # PostgreSQL driver used to call the employee stored procedure.
@@ -14,7 +15,7 @@ import psycopg
 from fastapi import FastAPI, HTTPException
 
 # Request-body validation for the /health2post example endpoint.
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -53,6 +54,14 @@ class EmployeeListInput(BaseModel):
     page_size: int | None = None
 
 
+class EmployeeInsertInput(BaseModel):
+    employee_name: str = Field(max_length=200)
+    department_id: int
+    status_id: int
+    email: str = Field(max_length=150)
+    salary: Decimal = Field(max_digits=12, decimal_places=2)
+
+
 @app.post("/employees")
 def list_employees(data: EmployeeListInput) -> dict[str, Any]:
     database_url = os.getenv("DATABASE_URL")
@@ -76,3 +85,34 @@ def list_employees(data: EmployeeListInput) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="Invalid response from employee procedure")
 
     return row[0]
+
+
+@app.post("/employees/insert", status_code=201)
+def insert_employee(data: EmployeeInsertInput) -> dict[str, str]:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="Database is not configured")
+
+    try:
+        with psycopg.connect(database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "CALL public.sp_insert_employee(%s, %s, %s, %s, %s, NULL, NULL)",
+                    (
+                        data.employee_name,
+                        data.department_id,
+                        data.status_id,
+                        data.email,
+                        data.salary,
+                    ),
+                )
+                row = cursor.fetchone()
+    except psycopg.OperationalError:
+        raise HTTPException(status_code=503, detail="Database is unavailable") from None
+    except psycopg.Error:
+        raise HTTPException(status_code=500, detail="Failed to insert employee") from None
+
+    if row is None or len(row) != 2 or not all(isinstance(value, str) for value in row):
+        raise HTTPException(status_code=500, detail="Invalid response from employee procedure")
+
+    return {"employee_name": row[0], "employee_code": row[1]}

@@ -3,6 +3,15 @@
 A Python API project built with FastAPI. It exposes employee listing, health
 check, and example POST endpoints.
 
+## Why FastAPI?
+
+FastAPI is a Python web framework that handles common API tasks so the project
+needs less custom HTTP code. It maps URLs and HTTP methods to Python functions,
+parses JSON request bodies, validates inputs using Pydantic models, and converts
+Python return values into JSON responses. It also generates interactive API
+documentation at `/docs` from the routes and models. Uvicorn runs the FastAPI
+application as a web server.
+
 ## Requirements
 
 - Python 3.10 or newer
@@ -60,7 +69,9 @@ dedicated application login rather than a PostgreSQL superuser. It needs
 permission to connect to the database, execute
 `public.sp_list_employees(integer, integer, integer, integer)`, and read the
 `public.employees`, `public.employees_department`, and `public.employees_status`
-tables used by the procedure.
+tables used by the procedure. For employee inserts, it also needs permission
+to execute `public.sp_insert_employee` and insert into `public.employees` (and
+use its employee ID sequence if the procedure runs with invoker privileges).
 
 If the password contains URL-reserved characters, encode them in the
 connection string (for example, `@` as `%40`, `:` as `%3A`, and `#` as `%23`).
@@ -69,6 +80,8 @@ Do not commit or share it. The checked-in `.env.example` contains placeholders
 only.
 
 The configured database must contain the `public.sp_list_employees` procedure.
+The employee insert endpoint also requires
+`public.sp_insert_employee(varchar, integer, integer, varchar, numeric, OUT varchar, OUT varchar)`.
 After saving `.env`, start the server from the project folder with the virtual
 environment active:
 
@@ -108,6 +121,94 @@ Example request body:
 
 The response contains `page`, `page_size`, `total_records`, `total_pages`, and
 `data`, as returned by the procedure.
+
+### `POST /employees/insert`
+
+Inserts an employee by calling `public.sp_insert_employee`. Send all procedure
+inputs in a JSON body:
+
+| JSON field | Type | Description |
+| --- | --- | --- |
+| `employee_name` | string | Employee name, up to 200 characters |
+| `department_id` | integer | Department ID |
+| `status_id` | integer | Status ID |
+| `email` | string | Email, up to 150 characters |
+| `salary` | number | Salary with up to 12 digits and 2 decimal places |
+
+Example request body:
+
+```json
+{
+  "employee_name": "Alex Smith",
+  "department_id": 2,
+  "status_id": 1,
+  "email": "alex@example.com",
+  "salary": 50000.00
+}
+```
+
+Returns HTTP `201` with the employee name and generated employee code.
+Database connection failures return HTTP `503`; other stored procedure errors
+return HTTP `500`.
+
+The procedure must declare two `OUT` parameters and assign the values after the
+insert. For example:
+
+```sql
+CREATE OR REPLACE PROCEDURE public.sp_insert_employee(
+    IN p_employee_name VARCHAR(200),
+    IN p_department_id INTEGER,
+    IN p_status_id INTEGER,
+    IN p_email VARCHAR(150),
+    IN p_salary NUMERIC(12,2),
+    OUT p_out_employee_name VARCHAR(200),
+    OUT p_out_employee_code VARCHAR(100)
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_employee_id INTEGER;
+    v_employee_code VARCHAR(100);
+BEGIN
+    v_employee_id := nextval(
+        pg_get_serial_sequence('public.employees', 'employee_id')
+    );
+
+    v_employee_code := 'E' || LPAD(
+        v_employee_id::TEXT,
+        GREATEST(4, LENGTH(v_employee_id::TEXT)),
+        '0'
+    );
+
+    INSERT INTO public.employees (
+        employee_id,
+        employee_code,
+        employee_name,
+        departmentid,
+        statusid,
+        email,
+        salary
+    )
+    OVERRIDING SYSTEM VALUE
+    VALUES (
+        v_employee_id,
+        v_employee_code,
+        p_employee_name,
+        p_department_id,
+        p_status_id,
+        p_email,
+        p_salary
+    );
+
+    p_out_employee_name := p_employee_name;
+    p_out_employee_code := v_employee_code;
+END;
+$$;
+```
+
+Because this adds output parameters, updating the existing procedure may
+require dropping and recreating it with its input argument types first. Check
+for dependencies and other callers before doing so.
 
 ### `GET /health1get`
 
