@@ -151,65 +151,6 @@ Returns HTTP `201` with the employee name and generated employee code.
 Database connection failures return HTTP `503`; other stored procedure errors
 return HTTP `500`.
 
-The procedure must declare two `OUT` parameters and assign the values after the
-insert. For example:
-
-```sql
-CREATE OR REPLACE PROCEDURE public.sp_insert_employee(
-    IN p_employee_name VARCHAR(200),
-    IN p_department_id INTEGER,
-    IN p_status_id INTEGER,
-    IN p_email VARCHAR(150),
-    IN p_salary NUMERIC(12,2),
-    OUT p_out_employee_name VARCHAR(200),
-    OUT p_out_employee_code VARCHAR(100)
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    v_employee_id INTEGER;
-    v_employee_code VARCHAR(100);
-BEGIN
-    v_employee_id := nextval(
-        pg_get_serial_sequence('public.employees', 'employee_id')
-    );
-
-    v_employee_code := 'E' || LPAD(
-        v_employee_id::TEXT,
-        GREATEST(4, LENGTH(v_employee_id::TEXT)),
-        '0'
-    );
-
-    INSERT INTO public.employees (
-        employee_id,
-        employee_code,
-        employee_name,
-        departmentid,
-        statusid,
-        email,
-        salary
-    )
-    OVERRIDING SYSTEM VALUE
-    VALUES (
-        v_employee_id,
-        v_employee_code,
-        p_employee_name,
-        p_department_id,
-        p_status_id,
-        p_email,
-        p_salary
-    );
-
-    p_out_employee_name := p_employee_name;
-    p_out_employee_code := v_employee_code;
-END;
-$$;
-```
-
-Because this adds output parameters, updating the existing procedure may
-require dropping and recreating it with its input argument types first. Check
-for dependencies and other callers before doing so.
-
 ### `GET /health1get`
 
 Returns the service health status:
